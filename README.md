@@ -1,6 +1,5 @@
 # httpbin(1): HTTP Request & Response Service
 
-
 A [Kenneth Reitz](http://kennethreitz.org/bitcoin) Project.
 
 ![ice cream](http://farm1.staticflickr.com/572/32514669683_4daf2ab7bc_k_d.jpg)
@@ -11,6 +10,14 @@ docker pull kennethreitz/httpbin
 docker run -p 80:80 kennethreitz/httpbin
 ```
 
+or
+
+```sh
+pip3 install Pipfile
+python3 setup.py install
+./httpbin.sh # requires gunicorn
+```
+
 See http://httpbin.org for more information.
 
 ## Officially Deployed at:
@@ -18,7 +25,6 @@ See http://httpbin.org for more information.
 - http://httpbin.org
 - https://httpbin.org
 - https://hub.docker.com/r/kennethreitz/httpbin/
-
 
 ## SEE ALSO
 
@@ -28,4 +34,5 @@ See http://httpbin.org for more information.
 
 ## Build Status
 
-[![Build Status](https://travis-ci.org/requests/httpbin.svg?branch=master)](https://travis-ci.org/requests/httpbin)
+[![Build Status](https://travis-ci.org/postmanlabs/httpbin.svg?branch=master)](https://travis-ci.org/postmanlabs/httpbin)
+
