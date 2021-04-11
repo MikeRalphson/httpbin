@@ -151,7 +151,7 @@
                     response.json()
                         .then(function (json) {
                             var current_protocol = window.location.protocol.slice(0, -1);
-                            if (json.schemes[0] != current_protocol) {
+                            if (json.schemes && json.schemes[0] != current_protocol) {
                                 // Switches scheme to the current in use
                                 var other_protocol = json.schemes[0];
                                 json.schemes[0] = current_protocol;
@@ -162,7 +162,9 @@
 
                             const ui = SwaggerUIBundle({
                                 spec: json,
-                                validatorUrl: null,
+                                //validatorUrl: null,
+                                validatorUrl: "http://online.swagger.io/validator",
+                                showCommonExtensions: true,
                                 dom_id: '#swagger-ui',
                                 deepLinking: true,
                                 jsonEditor: true,

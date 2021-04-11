@@ -75,7 +75,6 @@ def jsonify(*args, **kwargs):
         response.data += b"\n"
     return response
 
-
 # Prevent WSGI from correcting the casing of the Location header
 BaseResponse.autocorrect_location_header = False
 
@@ -91,8 +90,19 @@ app.add_template_global("HTTPBIN_TRACKING" in os.environ, name="tracking_enabled
 app.config["SWAGGER"] = {"title": "httpbin.org", "uiversion": 3}
 app.config['SWAGGER']['openapi'] = "3.0.3"
 
+@app.after_request
+def after_request_func(response):
+    if response.direct_passthrough:
+        return response
+    txt = response.get_data()
+    if b"\"openapi\":" in txt:
+        txt = txt.replace(b"\"definitions\": {},", b"")
+        response.set_data(txt)
+    return response
+
+# definitions bug, https://github.com/flasgger/flasgger/pull/439
+
 template = {
-    "swagger": "2.0",
     "info": {
         "title": "httpbin.org",
         "description": (
@@ -104,12 +114,13 @@ template = {
             "email": "me@kennethreitz.org",
             "url": "https://kennethreitz.org",
         },
+        "license": {
+            "name": "ISC",
+            "url": "https://spdx.org/licenses/ISC.html"
+        },
         # "termsOfService": "http://me.com/terms",
         "version": version,
     },
-    "host": "httpbin.org",  # overrides localhost:5000
-    "basePath": "/",  # base bash for blueprint registration
-    "schemes": ["http","https"],
     "tags": [
         {
             "name": "HTTP Methods",
@@ -146,7 +157,7 @@ swagger_config = {
     "specs": [
         {
             "endpoint": "spec",
-            "route": "/spec.json",
+            "route": "/openapi.json",
             "rule_filter": lambda rule: True,  # all in
             "model_filter": lambda tag: True,  # all in
         }
@@ -248,8 +259,6 @@ def view_html_page():
     ---
     tags:
       - Response formats
-    produces:
-      - text/html
     responses:
       200:
         description: An HTML page.
@@ -264,8 +273,6 @@ def view_robots_page():
     ---
     tags:
       - Response formats
-    produces:
-      - text/plain
     responses:
       200:
         description: Robots file
@@ -283,8 +290,6 @@ def view_deny_page():
     ---
     tags:
       - Response formats
-    produces:
-      - text/plain
     responses:
       200:
         description: Denied message
@@ -302,8 +307,6 @@ def view_origin():
     ---
     tags:
       - Request inspection
-    produces:
-      - application/json
     responses:
       200:
         description: The Requester's IP Address.
@@ -318,8 +321,6 @@ def view_uuid():
     ---
     tags:
       - Dynamic data
-    produces:
-      - application/json
     responses:
       200:
         description: A UUID4.
@@ -334,8 +335,6 @@ def view_headers():
     ---
     tags:
       - Request inspection
-    produces:
-      - application/json
     responses:
       200:
         description: The request's headers.
@@ -350,8 +349,6 @@ def view_user_agent():
     ---
     tags:
       - Request inspection
-    produces:
-      - application/json
     responses:
       200:
         description: The request's User-Agent header.
@@ -368,8 +365,6 @@ def view_get():
     ---
     tags:
       - HTTP Methods
-    produces:
-      - application/json
     responses:
       200:
         description: The request's query parameters.
@@ -384,8 +379,6 @@ def view_anything(anything=None):
     ---
     tags:
       - Anything
-    produces:
-      - application/json
     responses:
       200:
         description: Anything passed in request
@@ -414,13 +407,12 @@ def view_anything2(anything=None):
     ---
     tags:
       - Anything
-    produces:
-      - application/json
     parameters:
       - name: anything
         in: path
-        type: string
         required: true
+        schema:
+          type: string
     responses:
       200:
         description: Anything passed in request
@@ -447,8 +439,6 @@ def view_post():
     ---
     tags:
       - HTTP Methods
-    produces:
-      - application/json
     responses:
       200:
         description: The request's POST parameters.
@@ -465,8 +455,6 @@ def view_put():
     ---
     tags:
       - HTTP Methods
-    produces:
-      - application/json
     responses:
       200:
         description: The request's PUT parameters.
@@ -483,8 +471,6 @@ def view_patch():
     ---
     tags:
       - HTTP Methods
-    produces:
-      - application/json
     responses:
       200:
         description: The request's PATCH parameters.
@@ -501,8 +487,6 @@ def view_delete():
     ---
     tags:
       - HTTP Methods
-    produces:
-      - application/json
     responses:
       200:
         description: The request's DELETE parameters.
@@ -520,8 +504,6 @@ def view_gzip_encoded_content():
     ---
     tags:
       - Response formats
-    produces:
-      - application/json
     responses:
       200:
         description: GZip-encoded data.
@@ -537,8 +519,6 @@ def view_deflate_encoded_content():
     ---
     tags:
       - Response formats
-    produces:
-      - application/json
     responses:
       200:
         description: Defalte-encoded data.
@@ -554,8 +534,6 @@ def view_brotli_encoded_content():
     ---
     tags:
       - Response formats
-    produces:
-      - application/json
     responses:
       200:
         description: Brotli-encoded data.
@@ -563,6 +541,9 @@ def view_brotli_encoded_content():
 
     return jsonify(get_dict("origin", "headers", method=request.method, brotli=True))
 
+@app.route("/spec.json")
+def compat():
+  return redirect("/openapi.json", "", True)
 
 @app.route("/redirect/<int:n>")
 def redirect_n_times(n):
@@ -573,10 +554,9 @@ def redirect_n_times(n):
     parameters:
       - in: path
         name: n
-        type: integer
         required: true
-    produces:
-      - text/html
+        schema:
+          type: integer
     responses:
       302:
         description: A redirection.
@@ -606,53 +586,56 @@ def redirect_to():
     ---
     tags:
       - Redirects
-    produces:
-      - text/html
     get:
       parameters:
         - in: query
           name: url
-          type: string
           required: true
+          schema:
+            type: string
         - in: query
           name: status_code
-          type: integer
+          schema:
+            type: integer
     post:
-      consumes:
-        - application/x-www-form-urlencoded
-      parameters:
-        - in: formData
-          name: url
-          type: string
-          required: true
-        - in: formData
-          name: status_code
-          type: integer
-          required: false
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                status_code:
+                  type: integer
+              required: [ 'url' ]
     patch:
-      consumes:
-        - application/x-www-form-urlencoded
-      parameters:
-        - in: formData
-          name: url
-          type: string
-          required: true
-        - in: formData
-          name: status_code
-          type: integer
-          required: false
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                status_code:
+                  type: integer
+              required: [ 'url' ]
     put:
-      consumes:
-        - application/x-www-form-urlencoded
-      parameters:
-        - in: formData
-          name: url
-          type: string
-          required: true
-        - in: formData
-          name: status_code
-          type: integer
-          required: false
+      requestBody:
+        required: true
+        content:
+          'application/json':
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                status_code:
+                  type: integer
+              required: [ 'url' ]
     responses:
       302:
         description: A redirection.
@@ -684,10 +667,9 @@ def relative_redirect_n_times(n):
     parameters:
       - in: path
         name: n
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - text/html
     responses:
       302:
         description: A redirection.
@@ -715,10 +697,9 @@ def absolute_redirect_n_times(n):
     parameters:
       - in: path
         name: n
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - text/html
     responses:
       302:
         description: A redirection.
@@ -741,10 +722,9 @@ def stream_n_messages(n):
     parameters:
       - in: path
         name: n
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Streamed JSON responses.
@@ -772,9 +752,8 @@ def view_status_code(codes):
       - in: path
         name: codes
         required: true
-        type: string
-    produces:
-      - text/plain
+        schema:
+          type: string
     responses:
       100:
         description: Informational responses
@@ -824,12 +803,11 @@ def response_headers():
         name: freeform
         explode: true
         allowEmptyValue: true
-        type: object
-        additionalProperties:
-          type: string
+        schema:
+          type: object
+          additionalProperties:
+            type: string
         style: form
-    produces:
-      - application/json
     responses:
       200:
         description: Response headers
@@ -862,8 +840,6 @@ def view_cookies(hide_env=True):
     ---
     tags:
       - Cookies
-    produces:
-      - application/json
     responses:
       200:
         description: Set cookies.
@@ -897,14 +873,14 @@ def set_cookie(name, value):
     parameters:
       - in: path
         name: name
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: value
-        type: string
+        schema:
+          type: string
         required: true
-    produces:
-      - text/plain
     responses:
       200:
         description: Set cookies and redirects to cookie list.
@@ -927,12 +903,11 @@ def set_cookies():
         name: freeform
         explode: true
         allowEmptyValue: true
-        type: object
-        additionalProperties:
-          type: string
+        schema:
+          type: object
+          additionalProperties:
+            type: string
         style: form
-    produces:
-      - text/plain
     responses:
       200:
         description: Redirect to cookie list
@@ -957,12 +932,11 @@ def delete_cookies():
         name: freeform
         explode: true
         allowEmptyValue: true
-        type: object
-        additionalProperties:
-          type: string
+        schema:
+          type: object
+          additionalProperties:
+            type: string
         style: form
-    produces:
-      - text/plain
     responses:
       200:
         description: Redirect to cookie list
@@ -985,14 +959,14 @@ def basic_auth(user="user", passwd="passwd"):
     parameters:
       - in: path
         name: user
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: passwd
-        type: string
+        schema:
+          type: string
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Sucessful authentication.
@@ -1015,14 +989,14 @@ def hidden_basic_auth(user="user", passwd="passwd"):
     parameters:
       - in: path
         name: user
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: passwd
-        type: string
+        schema:
+          type: string
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Sucessful authentication.
@@ -1044,9 +1018,8 @@ def bearer_auth():
     parameters:
       - in: header
         name: Authorization
-        type: string
-    produces:
-      - application/json
+        schema:
+          type: string
     responses:
       200:
         description: Sucessful authentication.
@@ -1074,19 +1047,20 @@ def digest_auth_md5(qop=None, user="user", passwd="passwd"):
     parameters:
       - in: path
         name: qop
-        type: string
+        schema:
+          type: string
         description: auth or auth-int
         required: true
       - in: path
         name: user
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: passwd
-        type: string
+        schema:
+          type: string
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Sucessful authentication.
@@ -1105,25 +1079,27 @@ def digest_auth_nostale(qop=None, user="user", passwd="passwd", algorithm="MD5")
     parameters:
       - in: path
         name: qop
-        type: string
+        schema:
+          type: string
         description: auth or auth-int
         required: true
       - in: path
         name: user
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: passwd
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: algorithm
-        type: string
+        schema:
+          type: string
+          default: MD5
         description: MD5, SHA-256, SHA-512
-        default: MD5
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Sucessful authentication.
@@ -1145,30 +1121,33 @@ def digest_auth(
     parameters:
       - in: path
         name: qop
-        type: string
+        schema:
+          type: string
         description: auth or auth-int
         required: true
       - in: path
         name: user
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: passwd
-        type: string
+        schema:
+          type: string
         required: true
       - in: path
         name: algorithm
-        type: string
+        schema:
+          type: string
+          default: MD5
         description: MD5, SHA-256, SHA-512
-        default: MD5
         required: true
       - in: path
         name: stale_after
-        type: string
-        default: never
+        schema:
+          type: string
+          default: never
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Sucessful authentication.
@@ -1251,10 +1230,9 @@ def delay_response(delay):
     parameters:
       - in: path
         name: delay
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: A delayed response.
@@ -1277,30 +1255,32 @@ def drip():
     parameters:
       - in: query
         name: duration
-        type: number
+        schema:
+          type: number
+          default: 2
         description: The amount of time (in seconds) over which to drip each byte
-        default: 2
         required: false
       - in: query
         name: numbytes
-        type: integer
+        schema:
+          type: integer
+          default: 10
         description: The number of bytes to respond with
-        default: 10
         required: false
       - in: query
         name: code
-        type: integer
+        schema:
+          type: integer
+          default: 200
         description: The response code that will be returned
-        default: 200
         required: false
       - in: query
         name: delay
-        type: number
+        schema:
+          type: number
+          default: 2
         description: The amount of time (in seconds) to delay before responding
-        default: 2
         required: false
-    produces:
-      - application/octet-stream
     responses:
       200:
         description: A dripped response.
@@ -1347,11 +1327,10 @@ def decode_base64(value):
     parameters:
       - in: path
         name: value
-        type: string
+        schema:
+          type: string
+          default: SFRUUEJJTiBpcyBhd2Vzb21l
         required: true
-        default: SFRUUEJJTiBpcyBhd2Vzb21l
-    produces:
-      - text/html
     responses:
       200:
         description: Decoded base64 content.
@@ -1372,12 +1351,12 @@ def cache():
     parameters:
       - in: header
         name: If-Modified-Since
-        type: string
+        schema:
+          type: string
       - in: header
         name: If-None-Match
-        type: string
-    produces:
-      - application/json
+        schema:
+          type: string
     responses:
       200:
         description: Cached response
@@ -1407,16 +1386,17 @@ def etag(etag):
     parameters:
       - in: header
         name: If-None-Match
-        type: string
+        schema:
+          type: string
       - in: header
         name: If-Match
-        type: string
+        schema:
+          type: string
       - name: etag
         in: path
-        type: string
+        schema:
+          type: string
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Normal response
@@ -1451,10 +1431,9 @@ def cache_control(value):
     parameters:
       - in: path
         name: value
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - application/json
     responses:
       200:
         description: Cache control set
@@ -1470,8 +1449,6 @@ def encoding():
     ---
     tags:
       - Response formats
-    produces:
-      - text/html
     responses:
       200:
         description: Encoded UTF-8 content.
@@ -1489,10 +1466,9 @@ def random_bytes(n):
     parameters:
       - in: path
         name: n
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - application/octet-stream
     responses:
       200:
         description: Bytes.
@@ -1521,10 +1497,9 @@ def stream_random_bytes(n):
     parameters:
       - in: path
         name: n
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - application/octet-stream
     responses:
       200:
         description: Bytes.
@@ -1566,10 +1541,9 @@ def range_request(numbytes):
     parameters:
       - in: path
         name: numbytes
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - application/octet-stream
     responses:
       200:
         description: Bytes.
@@ -1657,14 +1631,14 @@ def link_page(n, offset):
     parameters:
       - in: path
         name: n
-        type: integer
+        schema:
+          type: integer
         required: true
       - in: path
         name: offset
-        type: integer
+        schema:
+          type: integer
         required: true
-    produces:
-      - text/html
     responses:
       200:
         description: HTML links.
@@ -1696,12 +1670,6 @@ def image():
     ---
     tags:
       - Images
-    produces:
-      - image/webp
-      - image/svg+xml
-      - image/jpeg
-      - image/png
-      - image/*
     responses:
       200:
         description: An image.
@@ -1731,8 +1699,6 @@ def image_png():
     ---
     tags:
       - Images
-    produces:
-      - image/png
     responses:
       200:
         description: A PNG image.
@@ -1747,8 +1713,6 @@ def image_jpeg():
     ---
     tags:
       - Images
-    produces:
-      - image/jpeg
     responses:
       200:
         description: A JPEG image.
@@ -1763,8 +1727,6 @@ def image_webp():
     ---
     tags:
       - Images
-    produces:
-      - image/webp
     responses:
       200:
         description: A WEBP image.
@@ -1779,8 +1741,6 @@ def image_svg():
     ---
     tags:
       - Images
-    produces:
-      - image/svg+xml
     responses:
       200:
         description: An SVG image.
@@ -1801,8 +1761,6 @@ def xml():
     ---
     tags:
       - Response formats
-    produces:
-      - application/xml
     responses:
       200:
         description: An XML document.
@@ -1818,8 +1776,6 @@ def a_json_endpoint():
     ---
     tags:
       - Response formats
-    produces:
-      - application/json
     responses:
       200:
         description: An JSON document.
