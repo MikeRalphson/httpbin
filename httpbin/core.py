@@ -89,6 +89,7 @@ app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True
 app.add_template_global("HTTPBIN_TRACKING" in os.environ, name="tracking_enabled")
 
 app.config["SWAGGER"] = {"title": "httpbin.org", "uiversion": 3}
+app.config['SWAGGER']['openapi'] = "3.0.3"
 
 template = {
     "swagger": "2.0",
